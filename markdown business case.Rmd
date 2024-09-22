@@ -1,0 +1,304 @@
+---
+title: "Markdown business project"
+author: "Uzor Chike"
+date: "2024-04-21"
+output:
+  html_document:
+    df_print: paged
+---
+
+## Importing and Visualizing the Dataset
+```{r}
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+library(caret)
+library(tidyr)
+data <- read.csv('Crop_recommendation (2).csv')
+df <- data.frame(data)
+head(df)
+
+```
+
+## Data Cleaning
+The first step in data preprocessing involves cleaning the dataset to address any missing values, outliers, or inconsistencies. This ensures that the data is of high quality and suitable for analysis.
+
+```{r}
+sapply(df, function(x) sum(is.na(x)))
+glimpse(df)
+names(df)
+#classes of target variable
+table(df$label)
+
+#removal of classes of crops not grown in Nigeria or surrounding regions
+# Create a vector containing the names of classes to remove
+classes_to_remove <- c("blackgram", "chickpea", "grapes", "jute", "lentil", "mothbeans", "mungbean", "muskmelon", "pomegranate")
+# Create a logical index to identify rows with the specified classes in the target variable
+logical_index <- !(df$label %in% classes_to_remove)
+
+# Subset your data using the logical index
+new_data <- df[logical_index, ]
+df <- new_data
+```
+
+
+## Feature Engineering
+Feature engineering is the process of creating new features or transforming existing ones to enhance the predictive power of the model. In this case, we may consider deriving a new feature such as:
+
+Soil Fertility Index: Calculating a composite index based on the N, P, and K ratios to represent overall soil fertility.
+In terms of importance for soil fertility, nitrogen (N), phosphorus (P), and potassium (K) play distinct but critical roles:
+
+1. Nitrogen (N):
+   - Nitrogen is essential for plant growth and development, playing a crucial role in protein synthesis, photosynthesis, and overall plant vigor.
+   - It is a major component of chlorophyll, which is necessary for photosynthesis, and it influences the plant's ability to absorb and utilize other nutrients.
+   - Nitrogen deficiency can lead to stunted growth, reduced yields, and poor crop quality.
+
+2. Phosphorus (P):
+   - Phosphorus is involved in energy transfer, root development, and flowering in plants.
+   - It plays a key role in processes such as DNA synthesis, cell division, and nutrient transport within the plant.
+   - Phosphorus deficiency can limit root growth, flowering, and fruit development, resulting in reduced yields and poor crop quality.
+
+3. Potassium (K):
+   - Potassium is essential for enzyme activation, water and nutrient uptake, and stress tolerance in plants.
+   - It regulates various physiological processes, including stomatal function, osmoregulation, and photosynthesis.
+   - Potassium deficiency can lead to reduced drought tolerance, susceptibility to diseases and pests, and poor fruit quality.
+
+To calculate a soil fertility index (SFI) based on nitrogen (N), phosphorus (P), and potassium (K) ratios, I used a weighted sum approach where I assigned weights to each nutrient ratio based on its relative importance in determining soil fertility.
+
+```{r}
+# Define weights for each nutrient ratio
+w_n <- 0.4  # Weight for nitrogen
+w_p <- 0.3  # Weight for phosphorus
+w_k <- 0.3  # Weight for potassium
+
+# Calculate Soil Fertility Index (SFI) using weighted sum
+df$Soil_Fertility_Index <- df$N * w_n + df$P * w_p + df$K * w_k
+
+View(df)
+```
+
+We define weights for each nutrient ratio (N, P, K) based on their relative importance in determining soil fertility. You can adjust these weights based on domain knowledge or expert recommendations.
+- We then calculate the SFI for each observation in the dataframe by multiplying each nutrient ratio by its corresponding weight and summing the results.
+- Finally, we add the calculated SFI values as a new column in the dataframe.
+
+## Exploratory Data Analysis
+Exploratory Data Analysis (EDA) is a crucial step in the data analysis process, aimed at gaining insights and understanding the underlying patterns, distributions, and relationships within a dataset. In this chapter, we embark on a journey to explore and unravel the intricate details of our dataset related to agricultural crop yield prediction. Through a series of analytical techniques and visualizations, we delve deep into the data to uncover valuable insights that will guide us in building a robust and effective predictive model.
+
+Objectives
+
+The primary objectives of this chapter are:
+
+To gain a comprehensive understanding of the dataset and its key characteristics.
+To identify patterns, trends, and relationships between variables that may influence crop yield prediction.
+To assess the quality of the data and detect anomalies.
+
+
+```{r}
+#Plot histogram for Soil_Fertility_Index
+ggplot(df, aes(x = Soil_Fertility_Index)) +
+  geom_histogram(binwidth = 0.5, fill = "skyblue", color = "black") +
+  labs(title = "Histogram of Soil Fertility Index", x = "Soil Fertility Index", y = "Frequency")
+
+```
+
+This is a bimodal distribution that appears to be positively skewed, with longer tails towards higher soil fertility index values. This skewness suggests that while there are several instances of lower soil fertility levels, the dataset contains a greater number of observations with higher soil fertility index values.
+
+```{r}
+#rainfall
+ggplot(df, aes(x = rainfall)) +
+  geom_histogram(binwidth = 0.5, fill = "skyblue", color = "cyan") +
+  labs(title = "Histogram of Rainfall", x = "Rainfall", y = "Frequency")
+
+```
+
+The distribution indicates predominantly low levels of rainfall across the dataset, with occasional instances of higher rainfall amounts. However, the prevalence of lower rainfall levels is notable, which I believe accurately reflects the typical situation in Nigeria.
+
+```{r}
+# Plot density plot for temperature
+ggplot(df, aes(x = temperature)) +
+  geom_density(fill = "skyblue", color = "black") +
+  labs(title = "Density Plot of Temperature", x = "Temperature", y = "Density")
+
+```
+
+The distribution of temperature in this manner has implications for understanding the prevailing temperature conditions in the dataset. The peak around 27-28 degree celcius indicates a common temperature range, while the decreasing frequencies towards the extremes suggest less common temperature occurrences.
+
+```{r}
+# Create box plots for each numerical feature grouped by label
+# Reshape the data to long format
+long_data <- gather(df, key = "feature", value = "value", -label)
+
+palette <- c("blue", "red", "green", "orange", "purple", "yellow", "cyan", "magenta", "brown", "gray", "darkgreen", "pink", "lightblue")
+# Plot box plots
+ggplot(long_data, aes(x = label, y = value, fill = label)) +
+  geom_boxplot(size = 1.5, width = 0.5) +  # Adjust size of boxplot
+  scale_fill_manual(values = palette) +  # Customize fill colors
+  facet_wrap(~ feature, scales = "free_y", strip.position = "bottom", labeller = labeller(feature = as_labeller(function(x) x))) +
+  labs(title = "Box Plots of Numerical Features by Label", x = "Label", y = "Value") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))  
+
+```
+
+These boxplots illustrate the diverse distributions of different classes within my target variable across all features in the dataset.
+
+```{r}
+#correlation matrix
+library(corrplot)
+df_numeric <- subset (df, select = -c(label))
+correlation_matrix <- cor(df_numeric)
+corrplot(correlation_matrix, method = "color")
+
+```
+
+
+```{r}
+# Create a scatter plot
+ggplot(df, aes(x = N, y = Soil_Fertility_Index, color = label)) +
+  geom_point() + 
+  labs(title = "Scatter Plot of Soil Fertility Index vs. Nitrogen Content (N)",
+       x = "Nitrogen Content (N)",
+       y = "Soil Fertility Index")
+
+```
+
+
+```{r}
+# Create a bar chart
+ggplot(df, aes(x = label, fill = label)) +
+  geom_bar() +  # Customize bar fill color
+  labs(title = "Distribution of Categorical Target Variable", x = "Label", y = "Count") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))  
+
+```
+
+A bar chart displaying equal numbers of observations for each class in the target variable indicates a balanced distribution of data across the classes. This suggests that each class is equally represented in the dataset, providing a fair and unbiased sample for analysis. Such balance in class distribution is essential for building a robust and reliable machine learning model, as it ensures that the model is trained on sufficient data from each class to make accurate predictions.
+
+## Building a Crop Recommendation Model for Precision Agriculture
+Precision Agriculture represents a paradigm shift in farming practices, harnessing technological advancements and data-driven insights to optimize crop production and resource management. Our goal in this chapter is to develop a predictive model capable of recommending the most suitable crops for specific farming conditions based on various agronomic parameters. Leveraging the Random Forest algorithm, known for its robustness and ability to handle complex datasets, we will delve into meticulous data analysis, feature engineering, and model training. By synthesizing agricultural data with advanced machine learning techniques, we aim to empower farmers with actionable intelligence to enhance crop yield, sustainability, and profitability in modern agricultural practices.
+
+### Feature Scaling
+Scaling the numerical features to a similar range helps improve model performance and convergence during training.
+```{r}
+#Normalizing numeric columns using min-max scaling
+numeric_cols <- sapply(df, is.numeric)
+df_normalized <- df
+df_normalized[, numeric_cols] <- lapply(df_normalized[, numeric_cols], function(x) (x-min(x)) / (max(x) - min(x)))
+head(df_normalized)
+df <- df_normalized
+```
+
+### Label Encoding Target Variable
+Label encoding the categorical target variable is essential because machine learning algorithms typically require numeric inputs. By converting categorical labels into numeric representations using label encoding, we enable the algorithm to process and learn from the target variable, facilitating model training and prediction.
+```{r}
+df$label <- factor(df$label)
+```
+
+###Split Dataset into training and testing
+```{r}
+set.seed((100))
+TrainingIndex <- createDataPartition(df$label, p=0.8, list = FALSE)
+TrainingSet <- df[TrainingIndex, ]
+TestingSet <- df[-TrainingIndex, ]
+
+x_indices <- c(1:7, 9)
+y_index <- 8
+
+X_Train <- TrainingSet[, x_indices]
+Y_Train <- TrainingSet[, y_index]
+
+X_Test <- TestingSet[, x_indices]
+Y_Test <- TestingSet[, y_index]
+
+```
+
+### Using Random Forest Algorithm
+```{r}
+library(randomForest)
+Model <- randomForest(x = X_Train,
+                      y = Y_Train,
+                      mtry = 4,
+                      ntree = 501,
+                      max_depth = 15,
+                      min_samples_leaf = 200,
+                      importance = TRUE)
+print(Model)
+
+#Making Recommendations
+predictions <- predict(Model, newdata = X_Test)
+
+#Accuracy Test
+accuracy <- mean(predictions == Y_Test)
+print(paste("Accuracy:", round(accuracy * 100, 2), "%"))
+```
+
+
+
+
+
+### Confusion matrix
+```{r}
+# Create confusion matrix
+conf_matrix <- confusionMatrix(predictions, Y_Test)
+
+# Plot confusion matrix
+library(ggplot2)
+plot_conf_matrix <- function(conf_matrix) {
+  ggplot(data = as.data.frame(conf_matrix$table), aes(x = Reference, y = Prediction, fill = Freq)) +
+    geom_tile(color = "white") +
+    scale_fill_gradient(low = "lightblue", high = "darkblue") +
+    geom_text(aes(label = sprintf("%1.0f", Freq)), vjust = 1) +
+    labs(title = "Confusion Matrix",
+         x = "Predicted Class",
+         y = "True Class") +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+}
+
+plot_conf_matrix(conf_matrix)
+
+```
+
+A confusion matrix that shows 80 diagonally from the bottom-left corner to the top-right corner and 0 everywhere else indicates the following:
+
+1. **Perfect Classification**: The presence of 80 in the diagonal cells (true positives and true negatives) suggests that the model has achieved perfect classification for both the positive and negative classes. In other words, there are no false positives or false negatives, and all instances are correctly classified.
+
+2. **High Accuracy**: The fact that all other cells outside the diagonal contain zeros indicates that there are no misclassifications. This implies that the model's accuracy is 100%, as there are no errors in the predictions.
+
+3. **Ideal Performance**: The diagonal line of 80 represents the main diagonal of the confusion matrix, which corresponds to the correct predictions made by the model. The absence of values in other cells indicates that there are no incorrect predictions, leading to an ideal performance.
+
+4. **No Misclassifications**: The model has effectively classified all instances into their correct classes, achieving perfect sensitivity (true positive rate) and specificity (true negative rate). This implies that the model's predictions are highly reliable and consistent across all classes.
+
+In summary, a confusion matrix with 80 diagonally from the bottom-left corner to the top-right corner and 0 everywhere else indicates a perfect classification scenario where the model has achieved optimal performance with no misclassifications.
+
+### ROC curve
+```{r}
+# Convert categorical predictions to numeric using label encoding
+predictions_numeric <- as.numeric(factor(predictions, levels = levels(Y_Test)))
+
+# Create ROC curve
+library(pROC)
+roc_curve <- roc(as.numeric(factor(Y_Test, levels = levels(Y_Test))), predictions_numeric)
+
+# Plot ROC curve
+plot(roc_curve, col = "blue", main = "ROC Curve", auc.polygon = TRUE, grid = TRUE)
+
+# Add AUC to plot
+legend("bottomright", legend = paste("AUC =", round(auc(roc_curve), 2)))
+
+```
+
+An ROC curve that perfectly cuts across the graph from the bottom-left corner to the top-right corner and has an AUC (Area Under the Curve) value of 1 indicates an ideal classifier. Here's how you can interpret it:
+
+1. **Perfect Classification**: An AUC of 1 suggests that the model has perfect discrimination ability. It means that the model is capable of perfectly distinguishing between the positive and negative classes. In other words, there are no false positives or false negatives, and every positive instance is ranked higher than every negative instance.
+
+2. **Excellent Performance**: The ROC curve being a diagonal line from (0,0) to (1,1) indicates that the true positive rate (sensitivity) increases with the false positive rate (1-specificity) in a perfectly linear manner. This linear relationship signifies that the model's performance is consistent across all threshold values.
+
+3. **High Sensitivity and Specificity**: The fact that the curve cuts through the top-left corner (100% sensitivity) and top-right corner (100% specificity) implies that the model achieves both high sensitivity (correctly identifying positive instances) and high specificity (correctly identifying negative instances).
+
+4. **No Trade-off**: Unlike typical ROC curves, where there's a trade-off between sensitivity and specificity (increasing one decreases the other), a curve with AUC = 1 indicates no such trade-off. The model achieves the highest possible sensitivity and specificity simultaneously.
+
+In summary, an ROC curve with AUC = 1 signifies a flawless classifier with perfect discrimination ability, making it an ideal outcome for any classification task.
+
+
+
